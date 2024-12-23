@@ -1,0 +1,69 @@
+name: Bundle Size Check
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: ./
+
+env:
+  BUNDLEWATCH_GITHUB_TOKEN: ${{ secrets.BUNDLEWATCH_GITHUB_TOKEN }}
+  CI_REPO_OWNER: kirandash
+  CI_REPO_NAME: nextjs-production-infrastructure-bundlecheck
+  CI_COMMIT_SHA: ${{ github.sha }}
+  CI_BRANCH: main
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - uses: actions/cache@v4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Restore next build
+        uses: actions/cache@v4
+        with:
+          path: /.next
+          key: ${{ runner.os }}-next-build-${{ hashFiles('/next.config.js') }}
+          restore-keys: |
+            ${{ runner.os }}-next-build-
+
+      - name: Build project
+        run: pnpm run build
+
+      - name: Check bundle size
+        run: pnpm run bundlewatch
